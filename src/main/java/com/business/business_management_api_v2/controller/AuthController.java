@@ -1,6 +1,8 @@
 package com.business.business_management_api_v2.controller;
 
+import com.business.business_management_api_v2.dto.request.LoginRequest;
 import com.business.business_management_api_v2.dto.request.RegisterRequest;
+import com.business.business_management_api_v2.dto.response.AuthResponse;
 import com.business.business_management_api_v2.dto.response.UserResponse;
 import com.business.business_management_api_v2.service.AuthService;
 import jakarta.validation.Valid;
@@ -20,5 +22,10 @@ public class AuthController {
     @PostMapping("/register")
     public ResponseEntity<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(authService.register(request));
+    }
+
+    @PostMapping("/login")
+    public AuthResponse login(@Valid @RequestBody LoginRequest request) {
+        return authService.login(request);
     }
 }
