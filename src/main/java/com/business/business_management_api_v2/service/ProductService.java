@@ -25,25 +25,24 @@ public class ProductService {
         }
         Product product = productMapper.toEntity(request);
         Product saved = productRepo.save(product);
-        return toResponse(saved);
+        return productMapper.toResponse(saved);
     }
 
     public Page<ProductResponse> getAll(Pageable pageable) {
-        return productRepo.findAllByActiveTrue(pageable).map(this::toResponse);
+        return productRepo.findAllByActiveTrue(pageable).map(productMapper::toResponse);
     }
 
     public ProductResponse getById(Long id){
-        return toResponse(findActiveOrThrow(id));
+        return productMapper.toResponse(findActiveOrThrow(id));
     }
 
     public ProductResponse update(Long id, ProductRequest request){
-        if(productRepo.existsByNameAndActiveTrueAndIdNot(request.getName(),id)){
-            throw new ConflictException("Tên sản phẩm đã tồn tại");
+        Product product = findActiveOrThrow(id);                       // 404 trước
+        if (productRepo.existsByNameAndActiveTrueAndIdNot(request.getName(), id)) {
+            throw new ConflictException("Tên sản phẩm đã tồn tại");    // rồi mới 409
         }
-        Product product = findActiveOrThrow(id);
-        productMapper.updatedFromRequest(request,product);
-        Product saved = productRepo.save(product);
-        return toResponse(saved);
+        productMapper.updateFromRequest(request, product);
+        return productMapper.toResponse(productRepo.save(product));
     }
 
     public void delete(Long id){
@@ -52,11 +51,11 @@ public class ProductService {
         Product saved = productRepo.save(product);
     }
 
-    private ProductResponse toResponse(Product p){
-        return new ProductResponse(
-                p.getId(), p.getName(), p.getDescription(),
-                p.getPrice(), p.getStockQuantity(), p.isActive());
-    }
+//    private ProductResponse toResponse(Product p){
+//        return new ProductResponse(
+//                p.getId(), p.getName(), p.getDescription(),
+//                p.getPrice(), p.getStockQuantity(), p.isActive());
+//    }
 
     private Product findActiveOrThrow(Long id){
         return productRepo.findByIdAndActiveTrue(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sản phẩm có ID: " + id));

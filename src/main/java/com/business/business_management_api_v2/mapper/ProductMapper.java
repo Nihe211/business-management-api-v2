@@ -17,5 +17,5 @@ public interface ProductMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "active", ignore = true)
-    void updatedFromRequest(ProductRequest request, @MappingTarget Product product);
+    void updateFromRequest(ProductRequest request, @MappingTarget Product product);
 }
