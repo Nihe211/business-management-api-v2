@@ -1,7 +1,11 @@
 package com.business.business_management_api_v2.controller;
 
+import com.business.business_management_api_v2.dto.request.ProductRequest;
+import com.business.business_management_api_v2.dto.response.ProductResponse;
 import com.business.business_management_api_v2.entity.Product;
 import com.business.business_management_api_v2.repository.ProductRepo;
+import com.business.business_management_api_v2.service.ProductService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,51 +18,34 @@ import java.util.Optional;
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
 public class ProductController {
-    private final ProductRepo productRepo;
+    private final ProductService productService;
 
     @GetMapping
-    public List<Product> getAll(){
-        return productRepo.findAllByActiveTrue();
+    public List<ProductResponse> getAll(){
+        return productService.getAll();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Product> getById(@PathVariable Long id){
-        return productRepo.findByIdAndActiveTrue(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ProductResponse> getById(@PathVariable Long id){
+        return ResponseEntity.ok(productService.getById(id));
     }
 
     @PostMapping
-    public ResponseEntity<Product> create(@RequestBody Product product){
-        Product saved = productRepo.save(product);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+    public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request){
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.create(request));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Product> update(@PathVariable Long id, @RequestBody Product updateProduct){
-        Optional<Product> optionalProduct = productRepo.findByIdAndActiveTrue(id);
-        if(optionalProduct.isPresent()){
-            Product product = optionalProduct.get();
-            product.setName(updateProduct.getName());
-            product.setDescription(updateProduct.getDescription());
-            product.setPrice(updateProduct.getPrice());
-            product.setStockQuantity(updateProduct.getStockQuantity());
-            Product saved = productRepo.save(product);
-            return ResponseEntity.status(HttpStatus.OK).body(saved);
-        }
-        return ResponseEntity.notFound().build();
+    public ResponseEntity<ProductResponse> update(@PathVariable Long id,@Valid @RequestBody ProductRequest request){
+
+        return ResponseEntity.ok(productService.update(id,request));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteByID(@PathVariable Long id){
-        Optional<Product> optionalProduct = productRepo.findById(id);
-        if (optionalProduct.isPresent()){
-            Product product = optionalProduct.get();
-            product.setActive(false);
-            Product saved = productRepo.save(product);
-            return ResponseEntity.noContent().build();
-        }
-        return ResponseEntity.notFound().build();
+        productService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
 
