@@ -7,6 +7,8 @@ import com.business.business_management_api_v2.repository.ProductRepo;
 import com.business.business_management_api_v2.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,8 +23,8 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    public List<ProductResponse> getAll(){
-        return productService.getAll();
+    public Page<ProductResponse> getAll(Pageable pageable) {
+        return productService.getAll(pageable);
     }
 
     @GetMapping("/{id}")
