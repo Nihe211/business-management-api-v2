@@ -3,6 +3,7 @@ package com.business.business_management_api_v2.exception;
 import com.business.business_management_api_v2.dto.response.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -46,6 +47,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex, HttpServletRequest req) {
         return build(HttpStatus.BAD_REQUEST, "Tham số '" + ex.getName() + "' không hợp lệ", null, req);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex, HttpServletRequest req) {
+        log.warn("Vi phạm ràng buộc dữ liệu tại {}: {}",
+                req.getRequestURI(), ex.getMostSpecificCause().getMessage());
+        return build(HttpStatus.CONFLICT, "Dữ liệu bị trùng hoặc vi phạm ràng buộc của hệ thống", null, req);
     }
 
     // Lưới an toàn cuối cùng: mọi lỗi chưa được xử lý ở trên
