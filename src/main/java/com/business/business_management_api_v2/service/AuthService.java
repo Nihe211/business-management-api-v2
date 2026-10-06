@@ -99,7 +99,7 @@ public class AuthService {
         // TODO 3: nếu stored.isRevoked():
         //           gọi refreshTokenRepo.revokeAllByUserId(stored.getUser().getId())
         //           rồi ném UnauthorizedException("Refresh token đã bị thu hồi, vui lòng đăng nhập lại")
-        if (stored.isRevoked()){
+        if (refreshTokenRepo.markRevoked(stored.getId()) == 0){
             refreshTokenRepo.revokeAllByUserId(stored.getUser().getId());
             throw new UnauthorizedException("Refresh token đã bị thu hồi, vui lòng đăng nhập lại");
         }
