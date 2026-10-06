@@ -68,6 +68,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, "Tài khoản đã bị vô hiệu hoá", null, req);
     }
 
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiError> handleUnauthorized(UnauthorizedException ex, HttpServletRequest req) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), null, req);
+    }
+
     // Lưới an toàn cuối cùng: mọi lỗi chưa được xử lý ở trên
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleOther(Exception ex, HttpServletRequest req) {

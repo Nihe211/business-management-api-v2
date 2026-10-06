@@ -4,20 +4,33 @@ import com.business.business_management_api_v2.dto.request.LoginRequest;
 import com.business.business_management_api_v2.dto.request.RegisterRequest;
 import com.business.business_management_api_v2.dto.response.AuthResponse;
 import com.business.business_management_api_v2.dto.response.UserResponse;
+import com.business.business_management_api_v2.entity.RefreshToken;
 import com.business.business_management_api_v2.entity.User;
 import com.business.business_management_api_v2.enums.Role;
 import com.business.business_management_api_v2.exception.ConflictException;
 import com.business.business_management_api_v2.exception.ResourceNotFoundException;
+import com.business.business_management_api_v2.exception.UnauthorizedException;
 import com.business.business_management_api_v2.mapper.UserMapper;
+import com.business.business_management_api_v2.repository.RefreshTokenRepo;
 import com.business.business_management_api_v2.repository.UserRepo;
 import com.business.business_management_api_v2.security.CustomUserDetails;
 import com.business.business_management_api_v2.security.JwtService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.util.Base64;
+import java.util.HexFormat;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +40,10 @@ public class AuthService {
     private final UserMapper userMapper;
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
-
+    private static final SecureRandom RANDOM = new SecureRandom();
+    private final RefreshTokenRepo refreshTokenRepo;
+    @Value("${app.jwt.refresh-expiration-ms}")
+    private long refreshExpirationMs;
     public UserResponse register(RegisterRequest request) {
         // TODO 1: chuẩn hoá email: trim() và toLowerCase()
         String email = request.getEmail().trim().toLowerCase();
@@ -61,30 +77,90 @@ public class AuthService {
         return userMapper.toResponse(saved);
     }
 
-    public AuthResponse login(LoginRequest request) {
-        // TODO 1: username = request.getUsername().trim().toLowerCase()
+    public AuthTokens login(LoginRequest request){
         String username = request.getUsername().trim().toLowerCase();
-        // TODO 2: Authentication auth = authenticationManager.authenticate(
-        //             new UsernamePasswordAuthenticationToken(username, request.getPassword()));
-        //         (sai mật khẩu thì dòng này tự ném BadCredentialsException)
         Authentication auth = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(username,request.getPassword()));
-        // TODO 3: CustomUserDetails principal = (CustomUserDetails) auth.getPrincipal();
-        CustomUserDetails pricipal = (CustomUserDetails) auth.getPrincipal();
-        // TODO 4: String token = jwtService.generateAccessToken(principal);
-        String token = jwtService.generateAccessToken(pricipal);
-        // TODO 5: User user = userRepo.findById(principal.getId()) ... orElseThrow(ResourceNotFoundException)
-        User user = userRepo.findById(pricipal.getId()).orElseThrow(()-> new ResourceNotFoundException("Không tìm thấy user có ID: " + pricipal.getId()));
-        // TODO 6: return AuthResponse.builder()
-        //             .accessToken(token)
-        //             .tokenType("Bearer")
-        //             .expiresIn(jwtService.getAccessExpirationMs() / 1000)
-        //             .user(userMapper.toResponse(user))
-        //             .build();
-        return AuthResponse.builder()
-                .accessToken(token)
+        CustomUserDetails principal = (CustomUserDetails) auth.getPrincipal();
+        User user = userRepo.findById(principal.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user có ID: " + principal.getId()));
+        return issueTokens(user);
+    }
+
+    @Transactional(noRollbackFor = UnauthorizedException.class)
+    public AuthTokens refresh(String rawToken) {
+        // TODO 1: rawToken null hoặc blank -> ném UnauthorizedException("Không tìm thấy refresh token")
+        if (rawToken == null||rawToken.isBlank()){
+            throw new UnauthorizedException("Không tìm thấy refresh token");
+        }
+        // TODO 2: tìm RefreshToken stored bằng refreshTokenRepo.findByTokenHash(hash(rawToken))
+        //         không có -> UnauthorizedException("Refresh token không hợp lệ")
+        RefreshToken stored = refreshTokenRepo.findByTokenHash(hash(rawToken)).
+                orElseThrow(()-> new UnauthorizedException("Refresh token không hợp lệ"));
+        // TODO 3: nếu stored.isRevoked():
+        //           gọi refreshTokenRepo.revokeAllByUserId(stored.getUser().getId())
+        //           rồi ném UnauthorizedException("Refresh token đã bị thu hồi, vui lòng đăng nhập lại")
+        if (stored.isRevoked()){
+            refreshTokenRepo.revokeAllByUserId(stored.getUser().getId());
+            throw new UnauthorizedException("Refresh token đã bị thu hồi, vui lòng đăng nhập lại");
+        }
+        // TODO 4: nếu stored.getExpiresAt().isBefore(Instant.now()) -> UnauthorizedException("Refresh token đã hết hạn")
+        if (stored.getExpiresAt().isBefore(Instant.now())){
+            throw new UnauthorizedException("Refresh token đã hết hạn");
+        }
+        // TODO 5: nếu !stored.getUser().isActive() -> UnauthorizedException("Tài khoản đã bị vô hiệu hoá")
+        if (!stored.getUser().isActive()){
+            throw new UnauthorizedException("Tài khoản đã bị vô hiệu hoá");
+        }
+        // TODO 6: stored.setRevoked(true);     // dùng xong là bỏ (rotation)
+        stored.setRevoked(true);
+        // TODO 7: return issueTokens(stored.getUser());
+        return issueTokens(stored.getUser());
+    }
+
+    @Transactional
+    public void logout(String rawToken) {
+        // TODO: rawToken null hoặc blank thì return
+        //       tìm theo hash(rawToken); nếu có thì setRevoked(true)  (dùng .ifPresent)
+        //       không có cũng KHÔNG báo lỗi: đăng xuất lặp lại vẫn coi là thành công
+        if (rawToken==null||rawToken.isBlank()){
+            return;
+        }
+        refreshTokenRepo.findByTokenHash(hash(rawToken))
+                .ifPresent(stored -> stored.setRevoked(true));
+
+    }
+
+    private AuthTokens issueTokens(User user){
+        CustomUserDetails principal = new CustomUserDetails(user);
+
+        String rawRefreshToken = generateRawToken();
+        RefreshToken entity = new RefreshToken();
+        entity.setUser(user);
+        entity.setTokenHash(hash(rawRefreshToken));
+        entity.setExpiresAt(Instant.now().plusMillis(refreshExpirationMs));
+        refreshTokenRepo.save(entity);
+
+        AuthResponse body = AuthResponse.builder()
+                .accessToken(jwtService.generateAccessToken(principal))
                 .tokenType("Bearer")
-                .expiresIn(jwtService.getAccessExpirationMs()/1000)
+                .expiresIn(jwtService.getAccessExpirationMs())
                 .user(userMapper.toResponse(user))
                 .build();
+        return new AuthTokens(body,rawRefreshToken);
+    }
+
+    private String generateRawToken(){
+        byte[] bytes = new byte[32];
+        RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String hash(String raw){
+        try{
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(md.digest(raw.getBytes(StandardCharsets.UTF_8)));
+        }catch (NoSuchAlgorithmException ex){
+            throw new IllegalStateException(ex);
+        }
     }
 }
